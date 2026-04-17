@@ -1,0 +1,18 @@
+{
+  "name": "Our Private Space",
+  "short_name": "OurSpace",
+  "description": "A private place for us to talk.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#fce4ec",
+  "theme_color": "#f06292",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2589/2589175.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
