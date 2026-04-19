@@ -1,37 +1,47 @@
-<!DOCTYPE html>
+                    <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Duel Online</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Firestore Duel</title>
     <style>
-        body { margin: 0; background: #050505; color: #0ff; font-family: 'Courier New', monospace; overflow: hidden; text-align: center; }
-        canvas { background: radial-gradient(circle, #111 0%, #000 100%); border: 2px solid #333; margin-top: 10px; box-shadow: 0 0 20px rgba(0,255,255,0.1); }
-        #ui { padding: 10px; }
-        .stats { font-size: 1.2rem; margin: 10px; display: flex; justify-content: center; gap: 30px; }
-        .controls { color: #666; font-size: 0.8rem; }
-        #status { font-weight: bold; color: #ff00ff; }
+        body { margin: 0; background: #000; color: #0ff; font-family: sans-serif; overflow: hidden; touch-action: none; text-align: center; }
+        canvas { background: #050505; border-bottom: 2px solid #333; width: 100%; height: 45vh; display: block; }
+        #ui { height: 15vh; padding: 5px; }
+        .score-board { display: flex; justify-content: center; gap: 30px; font-size: 1.2rem; font-weight: bold; }
+        
+        /* Mobile Controls */
+        .controls { display: flex; justify-content: space-around; align-items: center; height: 40vh; background: #111; }
+        .d-pad { display: grid; grid-template-columns: repeat(3, 60px); grid-gap: 10px; }
+        .btn { width: 60px; height: 60px; background: #222; border: 2px solid #0ff; color: #0ff; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+        .btn:active { background: #0ff; color: #000; }
+        .fire-btn { width: 90px; height: 90px; background: #ff0055; color: white; border-radius: 50%; border: none; font-weight: bold; font-size: 1.2rem; box-shadow: 0 0 20px #ff0055; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1>NEON DUEL ONLINE</h1>
-        <div id="status">Connecting to Radar...</div>
-        <div class="stats">
-            <div style="color: #00d2ff;">Blue: <span id="p1-score">0</span></div>
-            <div style="color: #ff3366;">Red: <span id="p2-score">0</span></div>
+        <div id="status">Connecting...</div>
+        <div class="score-board">
+            <span style="color:#00d2ff">P1: <span id="p1-score">0</span></span>
+            <span style="color:#ff3366">P2: <span id="p2-score">0</span></span>
         </div>
-        <div class="controls">WASD/Arrows to Move | Space to Fire</div>
     </div>
-    
+
     <canvas id="gameCanvas"></canvas>
+
+    <div class="controls">
+        <div class="d-pad">
+            <div></div><div class="btn" id="up">▲</div><div></div>
+            <div class="btn" id="left">◀</div><div class="btn" id="down">▼</div><div class="btn" id="right">▶</div>
+        </div>
+        <button class="fire-btn" id="fire">FIRE</button>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, onValue, set, update, onDisconnect, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Your Firebase Config
         const firebaseConfig = {
             apiKey: "AIzaSyDdv_CdkpQy_yN7_jAPOJ_6-C3obCoXVIg",
             authDomain: "game-3f597.firebaseapp.com",
@@ -39,154 +49,98 @@
             storageBucket: "game-3f597.firebasestorage.app",
             messagingSenderId: "151158588836",
             appId: "1:151158588836:web:6e242416de05fb0b1ced31",
-            measurementId: "G-FWX8ZBTDS6",
-            databaseURL: "https://game-3f597-default-rtdb.firebaseio.com"
+            measurementId: "G-FWX8ZBTDS6"
         };
 
-        // Initialize
         const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const myId = Math.random().toString(36).substring(7);
+        const db = getFirestore(app);
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        canvas.width = 800;
-        canvas.height = 500;
+        canvas.width = 400; canvas.height = 400;
 
-        let players = {};
-        let bullets = {};
         let myRole = ""; // "p1" or "p2"
+        let players = { p1: {x:50, y:200, s:0}, p2: {x:320, y:200, s:0} };
+        let bullets = [];
 
-        const playerRef = ref(db, `duel/players/${myId}`);
-        const allPlayersRef = ref(db, 'duel/players');
-        const bulletRef = ref(db, 'duel/bullets');
-
-        // Setup Local Player
-        set(playerRef, {
-            id: myId,
-            x: Math.random() * 700 + 50,
-            y: Math.random() * 400 + 50,
-            score: 0,
-            lastFired: 0
-        });
-        onDisconnect(playerRef).remove();
-
-        // Input Handling
-        const keys = {};
-        window.onkeydown = (e) => { 
-            keys[e.code] = true; 
-            if(e.code === 'Space') fireBullet();
-        };
-        window.onkeyup = (e) => keys[e.code] = false;
-
-        // Sync Players & Scores
-        onValue(allPlayersRef, (snapshot) => {
-            players = snapshot.val() || {};
-            const ids = Object.keys(players);
-            if (ids[0] === myId) myRole = "p1";
-            else if (ids[1] === myId) myRole = "p2";
-            else myRole = "spectator";
-
-            document.getElementById('status').innerText = myRole.toUpperCase() + " ACTIVE";
-            if(ids[0]) document.getElementById('p1-score').innerText = players[ids[0]].score || 0;
-            if(ids[1]) document.getElementById('p2-score').innerText = players[ids[1]].score || 0;
-        });
-
-        // Sync Bullets
-        onValue(bulletRef, (snapshot) => {
-            bullets = snapshot.val() || {};
-        });
-
-        function fireBullet() {
-            if (!players[myId]) return;
-            const now = Date.now();
-            if (now - players[myId].lastFired < 500) return; // Cooldown
-
-            const bId = push(bulletRef);
-            set(bId, {
-                owner: myId,
-                x: players[myId].x + 12,
-                y: players[myId].y + 12,
-                vx: myRole === "p1" ? 7 : -7,
-                createdAt: now
-            });
-            update(playerRef, { lastFired: now });
+        // Determine Role
+        async function joinGame() {
+            const p1Ref = doc(db, "duel", "p1");
+            const p1Snap = await getDoc(p1Ref);
+            
+            if (!p1Snap.exists()) {
+                myRole = "p1";
+                await setDoc(p1Ref, {x:50, y:200, s:0, t: Date.now()});
+                document.getElementById('status').innerText = "YOU ARE BLUE (P1)";
+            } else {
+                myRole = "p2";
+                await setDoc(doc(db, "duel", "p2"), {x:320, y:200, s:0, t: Date.now()});
+                document.getElementById('status').innerText = "YOU ARE RED (P2)";
+            }
         }
+        joinGame();
 
-        function updateLoop() {
-            if (!players[myId]) return;
+        // Listen for updates
+        onSnapshot(doc(db, "duel", "p1"), (s) => { if(s.exists()) players.p1 = s.data(); });
+        onSnapshot(doc(db, "duel", "p2"), (s) => { if(s.exists()) players.p2 = s.data(); });
 
-            let moved = false;
-            let nx = players[myId].x;
-            let ny = players[myId].y;
+        // Controls
+        let move = { x: 0, y: 0 };
+        const handleTouch = (id, x, y) => {
+            const el = document.getElementById(id);
+            el.ontouchstart = (e) => { e.preventDefault(); move.x = x; move.y = y; };
+            el.ontouchend = () => { move.x = 0; move.y = 0; };
+        };
+        handleTouch('up', 0, -5); handleTouch('down', 0, 5);
+        handleTouch('left', -5, 0); handleTouch('right', 5, 0);
 
-            if (keys['ArrowUp'] || keys['KeyW']) { ny -= 4; moved = true; }
-            if (keys['ArrowDown'] || keys['KeyS']) { ny += 4; moved = true; }
-            if (keys['ArrowLeft'] || keys['KeyA']) { nx -= 4; moved = true; }
-            if (keys['ArrowRight'] || keys['KeyD']) { nx += 4; moved = true; }
+        document.getElementById('fire').onclick = () => {
+            bullets.push({ 
+                x: players[myRole].x + 10, 
+                y: players[myRole].y + 10, 
+                v: myRole === "p1" ? 10 : -10 
+            });
+        };
 
-            if (moved) {
-                update(playerRef, { x: nx, y: ny });
+        function gameLoop() {
+            // Update My Position
+            if (myRole && (move.x !== 0 || move.y !== 0)) {
+                players[myRole].x += move.x;
+                players[myRole].y += move.y;
+                updateDoc(doc(db, "duel", myRole), { x: players[myRole].x, y: players[myRole].y });
             }
 
-            // Bullet Logic (Only owner updates their bullets to prevent flickering)
-            Object.keys(bullets).forEach(id => {
-                const b = bullets[id];
-                if (b.owner === myId) {
-                    const newX = b.x + b.vx;
-                    // Remove if out of bounds
-                    if (newX < 0 || newX > canvas.width) {
-                        remove(ref(db, `duel/bullets/${id}`));
-                    } else {
-                        // Check collision with enemy
-                        Object.keys(players).forEach(pId => {
-                            if (pId !== myId) {
-                                const p = players[pId];
-                                if (Math.hypot(p.x - b.x, p.y - b.y) < 25) {
-                                    update(playerRef, { score: (players[myId].score || 0) + 1 });
-                                    remove(ref(db, `duel/bullets/${id}`));
-                                }
-                            }
-                        });
-                        update(ref(db, `duel/bullets/${id}`), { x: newX });
-                    }
-                }
-            });
-        }
-
-        function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // Draw Players
-            Object.values(players).forEach((p, index) => {
-                const color = index === 0 ? '#00d2ff' : '#ff3366';
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = color;
-                ctx.fillStyle = color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = "#0ff"; ctx.shadowColor = "#0ff";
+            ctx.fillRect(players.p1.x, players.p1.y, 25, 25);
+            ctx.fillStyle = "#f05"; ctx.shadowColor = "#f05";
+            ctx.fillRect(players.p2.x, players.p2.y, 25, 25);
+
+            // UI
+            document.getElementById('p1-score').innerText = players.p1.s || 0;
+            document.getElementById('p2-score').innerText = players.p2.s || 0;
+
+            // Bullets
+            bullets.forEach((b, i) => {
+                b.x += b.v;
+                ctx.fillStyle = "white"; ctx.fillRect(b.x, b.y, 10, 4);
                 
-                // Draw Ship Shape
-                ctx.beginPath();
-                if(index === 0) { // Facing Right
-                    ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+30, p.y+15); ctx.lineTo(p.x, p.y+30);
-                } else { // Facing Left
-                    ctx.moveTo(p.x+30, p.y); ctx.lineTo(p.x, p.y+15); ctx.lineTo(p.x+30, p.y+30);
+                // Hit Logic
+                let enemy = myRole === "p1" ? "p2" : "p1";
+                let dist = Math.hypot(b.x - players[enemy].x, b.y - players[enemy].y);
+                if (dist < 25) {
+                    bullets.splice(i, 1);
+                    players[myRole].s++;
+                    updateDoc(doc(db, "duel", myRole), { s: players[myRole].s });
                 }
-                ctx.fill();
+                if(b.x < 0 || b.x > 400) bullets.splice(i, 1);
             });
 
-            // Draw Bullets
-            Object.values(bullets).forEach(b => {
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = "white";
-                ctx.fillStyle = "white";
-                ctx.fillRect(b.x, b.y, 10, 3);
-            });
-
-            updateLoop();
-            requestAnimationFrame(draw);
+            requestAnimationFrame(gameLoop);
         }
-
-        draw();
+        gameLoop();
     </script>
 </body>
 </html>
