@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Duel Online</title>
+    <style>
+        body { margin: 0; background: #050505; color: #0ff; font-family: 'Courier New', monospace; overflow: hidden; text-align: center; }
+        canvas { background: radial-gradient(circle, #111 0%, #000 100%); border: 2px solid #333; margin-top: 10px; box-shadow: 0 0 20px rgba(0,255,255,0.1); }
+        #ui { padding: 10px; }
+        .stats { font-size: 1.2rem; margin: 10px; display: flex; justify-content: center; gap: 30px; }
+        .controls { color: #666; font-size: 0.8rem; }
+        #status { font-weight: bold; color: #ff00ff; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>NEON DUEL ONLINE</h1>
+        <div id="status">Connecting to Radar...</div>
+        <div class="stats">
+            <div style="color: #00d2ff;">Blue: <span id="p1-score">0</span></div>
+            <div style="color: #ff3366;">Red: <span id="p2-score">0</span></div>
+        </div>
+        <div class="controls">WASD/Arrows to Move | Space to Fire</div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, onValue, set, update, onDisconnect, push, remove } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // Your Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDdv_CdkpQy_yN7_jAPOJ_6-C3obCoXVIg",
+            authDomain: "game-3f597.firebaseapp.com",
+            projectId: "game-3f597",
+            storageBucket: "game-3f597.firebasestorage.app",
+            messagingSenderId: "151158588836",
+            appId: "1:151158588836:web:6e242416de05fb0b1ced31",
+            measurementId: "G-FWX8ZBTDS6",
+            databaseURL: "https://game-3f597-default-rtdb.firebaseio.com"
+        };
+
+        // Initialize
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const myId = Math.random().toString(36).substring(7);
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 800;
+        canvas.height = 500;
+
+        let players = {};
+        let bullets = {};
+        let myRole = ""; // "p1" or "p2"
+
+        const playerRef = ref(db, `duel/players/${myId}`);
+        const allPlayersRef = ref(db, 'duel/players');
+        const bulletRef = ref(db, 'duel/bullets');
+
+        // Setup Local Player
+        set(playerRef, {
+            id: myId,
+            x: Math.random() * 700 + 50,
+            y: Math.random() * 400 + 50,
+            score: 0,
+            lastFired: 0
+        });
+        onDisconnect(playerRef).remove();
+
+        // Input Handling
+        const keys = {};
+        window.onkeydown = (e) => { 
+            keys[e.code] = true; 
+            if(e.code === 'Space') fireBullet();
+        };
+        window.onkeyup = (e) => keys[e.code] = false;
+
+        // Sync Players & Scores
+        onValue(allPlayersRef, (snapshot) => {
+            players = snapshot.val() || {};
+            const ids = Object.keys(players);
+            if (ids[0] === myId) myRole = "p1";
+            else if (ids[1] === myId) myRole = "p2";
+            else myRole = "spectator";
+
+            document.getElementById('status').innerText = myRole.toUpperCase() + " ACTIVE";
+            if(ids[0]) document.getElementById('p1-score').innerText = players[ids[0]].score || 0;
+            if(ids[1]) document.getElementById('p2-score').innerText = players[ids[1]].score || 0;
+        });
+
+        // Sync Bullets
+        onValue(bulletRef, (snapshot) => {
+            bullets = snapshot.val() || {};
+        });
+
+        function fireBullet() {
+            if (!players[myId]) return;
+            const now = Date.now();
+            if (now - players[myId].lastFired < 500) return; // Cooldown
+
+            const bId = push(bulletRef);
+            set(bId, {
+                owner: myId,
+                x: players[myId].x + 12,
+                y: players[myId].y + 12,
+                vx: myRole === "p1" ? 7 : -7,
+                createdAt: now
+            });
+            update(playerRef, { lastFired: now });
+        }
+
+        function updateLoop() {
+            if (!players[myId]) return;
+
+            let moved = false;
+            let nx = players[myId].x;
+            let ny = players[myId].y;
+
+            if (keys['ArrowUp'] || keys['KeyW']) { ny -= 4; moved = true; }
+            if (keys['ArrowDown'] || keys['KeyS']) { ny += 4; moved = true; }
+            if (keys['ArrowLeft'] || keys['KeyA']) { nx -= 4; moved = true; }
+            if (keys['ArrowRight'] || keys['KeyD']) { nx += 4; moved = true; }
+
+            if (moved) {
+                update(playerRef, { x: nx, y: ny });
+            }
+
+            // Bullet Logic (Only owner updates their bullets to prevent flickering)
+            Object.keys(bullets).forEach(id => {
+                const b = bullets[id];
+                if (b.owner === myId) {
+                    const newX = b.x + b.vx;
+                    // Remove if out of bounds
+                    if (newX < 0 || newX > canvas.width) {
+                        remove(ref(db, `duel/bullets/${id}`));
+                    } else {
+                        // Check collision with enemy
+                        Object.keys(players).forEach(pId => {
+                            if (pId !== myId) {
+                                const p = players[pId];
+                                if (Math.hypot(p.x - b.x, p.y - b.y) < 25) {
+                                    update(playerRef, { score: (players[myId].score || 0) + 1 });
+                                    remove(ref(db, `duel/bullets/${id}`));
+                                }
+                            }
+                        });
+                        update(ref(db, `duel/bullets/${id}`), { x: newX });
+                    }
+                }
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Players
+            Object.values(players).forEach((p, index) => {
+                const color = index === 0 ? '#00d2ff' : '#ff3366';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillStyle = color;
+                
+                // Draw Ship Shape
+                ctx.beginPath();
+                if(index === 0) { // Facing Right
+                    ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+30, p.y+15); ctx.lineTo(p.x, p.y+30);
+                } else { // Facing Left
+                    ctx.moveTo(p.x+30, p.y); ctx.lineTo(p.x, p.y+15); ctx.lineTo(p.x+30, p.y+30);
+                }
+                ctx.fill();
+            });
+
+            // Draw Bullets
+            Object.values(bullets).forEach(b => {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = "white";
+                ctx.fillStyle = "white";
+                ctx.fillRect(b.x, b.y, 10, 3);
+            });
+
+            updateLoop();
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
