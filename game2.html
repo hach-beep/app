@@ -3,45 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Strike Online</title>
+    <title>Neon Strike Fixed</title>
     <style>
-        body { margin: 0; background: #0a0a0a; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; text-align: center; }
+        body { margin: 0; background: #0a0a0a; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; text-align: center; }
         canvas { background: #000; border-bottom: 2px solid #0ff; width: 100%; height: 45vh; display: block; }
         
-        /* UI Overlay */
-        #setup, #win-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
-        #win-screen { display: none; }
-        input { padding: 12px; font-size: 1.2rem; border-radius: 8px; border: none; margin-bottom: 10px; text-align: center; }
-        button.start-btn { padding: 15px 40px; font-size: 1.5rem; background: #0ff; border: none; border-radius: 8px; font-weight: bold; }
+        #setup, #win-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        #win-screen { display: none; background: rgba(0,0,0,0.9); }
         
-        #game-ui { height: 15vh; display: flex; flex-direction: column; justify-content: center; background: #111; }
-        .score-row { display: flex; justify-content: space-around; font-size: 1.2rem; font-weight: bold; }
+        input { padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid #0ff; background: #222; color: #fff; margin-bottom: 15px; width: 70%; }
+        button.primary-btn { padding: 15px 50px; font-size: 1.5rem; background: #0ff; border: none; border-radius: 8px; font-weight: bold; color: #000; box-shadow: 0 0 15px #0ff; }
+        
+        #game-ui { height: 15vh; background: #111; display: flex; flex-direction: column; justify-content: center; }
+        .score-row { display: flex; justify-content: space-around; font-size: 1.3rem; font-weight: bold; }
         #status-msg { color: #ff00ff; font-size: 0.9rem; margin-top: 5px; }
 
-        /* Mobile Controls */
-        .controls { display: flex; justify-content: space-around; align-items: center; height: 40vh; background: #0a0a0a; }
+        .controls { display: flex; justify-content: space-around; align-items: center; height: 40vh; }
         .d-pad { display: grid; grid-template-columns: repeat(3, 65px); grid-gap: 8px; }
         .btn { width: 65px; height: 65px; background: #222; border: 2px solid #0ff; color: #0ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
-        .btn:active { background: #0ff; color: #000; }
-        .fire-btn { width: 100px; height: 100px; background: #ff0055; color: white; border-radius: 50%; border: none; font-weight: bold; font-size: 1.4rem; box-shadow: 0 0 20px #ff0055; }
-        
-        .victory-text { font-size: 3rem; color: #0ff; text-shadow: 0 0 20px #0ff; }
+        .fire-btn { width: 100px; height: 100px; background: #ff0055; color: white; border-radius: 50%; border: none; font-size: 1.4rem; font-weight: bold; box-shadow: 0 0 20px #ff0055; }
     </style>
 </head>
 <body>
 
-    <!-- Join Screen -->
+    <!-- JOIN SCREEN -->
     <div id="setup">
-        <h1 style="color:#0ff">NEON STRIKE</h1>
-        <input type="text" id="name-input" placeholder="Enter Your Name" maxlength="10">
-        <button class="start-btn" id="join-btn">PLAY</button>
+        <h1 style="color:#0ff; font-size: 2.5rem; text-shadow: 0 0 10px #0ff;">NEON STRIKE</h1>
+        <p>Enter name to start fresh match:</p>
+        <input type="text" id="name-input" placeholder="Your Name" maxlength="10">
+        <button class="primary-btn" id="join-btn">PLAY NOW</button>
     </div>
 
-    <!-- Win Screen -->
+    <!-- WIN SCREEN -->
     <div id="win-screen">
-        <h1 class="victory-text" id="win-msg">VICTORY!</h1>
-        <p id="winner-name" style="font-size:1.5rem"></p>
-        <button class="start-btn" onclick="location.reload()">REMATCH</button>
+        <h1 id="win-msg" style="font-size: 4rem; text-shadow: 0 0 20px #0ff;">VICTORY</h1>
+        <p id="winner-name" style="font-size: 1.5rem; color: #ff00ff;"></p>
+        <button class="primary-btn" onclick="location.reload()">PLAY AGAIN</button>
     </div>
 
     <div id="game-ui">
@@ -49,7 +46,7 @@
             <div id="p1-label" style="color:#0ff">P1: 0</div>
             <div id="p2-label" style="color:#f05">P2: 0</div>
         </div>
-        <div id="status-msg">Searching for opponent...</div>
+        <div id="status-msg">Welcome!</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -64,7 +61,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDdv_CdkpQy_yN7_jAPOJ_6-C3obCoXVIg",
@@ -84,115 +81,97 @@
 
         let myRole = ""; 
         let myName = "";
-        let players = { 
-            p1: {x:50, y:200, s:0, name: "Waiting..."}, 
-            p2: {x:320, y:200, s:0, name: "Waiting..."} 
-        };
-        let bullets = [];
         let gameActive = false;
+        let players = { p1: {x:50, y:200, s:0, n:"P1"}, p2: {x:320, y:200, s:0, n:"P2"} };
+        let bullets = [];
 
+        // 1. CLICK PLAY - This resets the database for you
         document.getElementById('join-btn').onclick = async () => {
             myName = document.getElementById('name-input').value || "Player";
+            
             const p1Snap = await getDoc(doc(db, "duel", "p1"));
-            
-            myRole = !p1Snap.exists() ? "p1" : "p2";
-            await setDoc(doc(db, "duel", myRole), {
-                x: myRole === "p1" ? 50 : 320,
-                y: 200, s: 0, name: myName
-            });
-            
+            const p2Snap = await getDoc(doc(db, "duel", "p2"));
+
+            // If P1 doesn't exist OR P1 has a finished game (score >= 5), we reset P1
+            if (!p1Snap.exists() || p1Snap.data().s >= 5) {
+                myRole = "p1";
+                await setDoc(doc(db, "duel", "p1"), { x: 50, y: 200, s: 0, n: myName });
+                // Also reset P2 if they had a high score
+                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: "Waiting..." });
+            } else {
+                myRole = "p2";
+                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: myName });
+            }
+
             document.getElementById('setup').style.display = 'none';
             gameActive = true;
         };
 
-        // Sync Data
-        onSnapshot(doc(db, "duel", "p1"), (s) => { 
-            if(s.exists()) {
-                players.p1 = s.data();
-                updateUI();
-            }
-        });
-        onSnapshot(doc(db, "duel", "p2"), (s) => { 
-            if(s.exists()) {
-                players.p2 = s.data();
-                updateUI();
-            }
-        });
+        // 2. LISTEN FOR DATA
+        onSnapshot(doc(db, "duel", "p1"), (s) => { if(s.exists()) { players.p1 = s.data(); updateUI(); } });
+        onSnapshot(doc(db, "duel", "p2"), (s) => { if(s.exists()) { players.p2 = s.data(); updateUI(); } });
 
         function updateUI() {
-            document.getElementById('p1-label').innerText = `${players.p1.name}: ${players.p1.s}`;
-            document.getElementById('p2-label').innerText = `${players.p2.name}: ${players.p2.s}`;
+            document.getElementById('p1-label').innerText = `${players.p1.n}: ${players.p1.s}`;
+            document.getElementById('p2-label').innerText = `${players.p2.n}: ${players.p2.s}`;
             
-            if(players.p1.name !== "Waiting..." && players.p2.name !== "Waiting...") {
-                document.getElementById('status-msg').innerText = "MATCH IN PROGRESS";
+            // Only show Win Screen if WE are actually playing
+            if (gameActive) {
+                if (players.p1.s >= 5) endMatch(players.p1.n);
+                if (players.p2.s >= 5) endMatch(players.p2.n);
             }
-
-            // Check Win Condition
-            if (players.p1.s >= 5) showWin(players.p1.name);
-            if (players.p2.s >= 5) showWin(players.p2.name);
         }
 
-        function showWin(winner) {
+        function endMatch(winner) {
             gameActive = false;
             document.getElementById('win-screen').style.display = 'flex';
             document.getElementById('win-msg').innerText = (winner === myName) ? "VICTORY!" : "DEFEAT";
             document.getElementById('winner-name').innerText = winner + " is the Champion!";
         }
 
-        // Move Logic
+        // 3. CONTROLS
         let move = { x: 0, y: 0 };
-        const handleTouch = (id, x, y) => {
+        const handleBtn = (id, x, y) => {
             const el = document.getElementById(id);
-            el.ontouchstart = (e) => { e.preventDefault(); if(gameActive) { move.x = x; move.y = y; } };
+            el.ontouchstart = (e) => { e.preventDefault(); move.x = x; move.y = y; };
             el.ontouchend = () => { move.x = 0; move.y = 0; };
         };
-        handleTouch('up', 0, -6); handleTouch('down', 0, 6);
-        handleTouch('left', -6, 0); handleTouch('right', 6, 0);
+        handleBtn('up', 0, -6); handleBtn('down', 0, 6);
+        handleBtn('left', -6, 0); handleBtn('right', 6, 0);
 
         document.getElementById('fire').onclick = () => {
             if(!gameActive) return;
-            bullets.push({ 
-                x: players[myRole].x + 12, y: players[myRole].y + 10, 
-                v: myRole === "p1" ? 12 : -12 
-            });
+            bullets.push({ x: players[myRole].x + 12, y: players[myRole].y + 10, v: myRole === "p1" ? 12 : -12 });
         };
 
         function gameLoop() {
-            if (gameActive && myRole && (move.x !== 0 || move.y !== 0)) {
-                players[myRole].x += move.x;
-                players[myRole].y += move.y;
-                // Boundary check
-                players[myRole].x = Math.max(0, Math.min(375, players[myRole].x));
-                players[myRole].y = Math.max(0, Math.min(375, players[myRole].y));
-                
+            if (gameActive && (move.x !== 0 || move.y !== 0)) {
+                players[myRole].x = Math.max(0, Math.min(375, players[myRole].x + move.x));
+                players[myRole].y = Math.max(0, Math.min(375, players[myRole].y + move.y));
                 updateDoc(doc(db, "duel", myRole), { x: players[myRole].x, y: players[myRole].y });
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw Players
             ctx.shadowBlur = 15;
+            
+            // Draw P1 (Blue)
             ctx.fillStyle = "#0ff"; ctx.shadowColor = "#0ff";
             ctx.fillRect(players.p1.x, players.p1.y, 25, 25);
             
+            // Draw P2 (Red)
             ctx.fillStyle = "#f05"; ctx.shadowColor = "#f05";
             ctx.fillRect(players.p2.x, players.p2.y, 25, 25);
 
-            // Bullets
+            // Bullets logic
             bullets.forEach((b, i) => {
                 b.x += b.v;
-                ctx.fillStyle = "#fff"; ctx.shadowColor = "#fff";
-                ctx.fillRect(b.x, b.y, 12, 4);
+                ctx.fillStyle = "#fff"; ctx.shadowColor = "#fff"; ctx.fillRect(b.x, b.y, 12, 4);
                 
                 let enemy = myRole === "p1" ? "p2" : "p1";
                 let dist = Math.hypot(b.x - players[enemy].x, b.y - players[enemy].y);
-                
                 if (dist < 25) {
                     bullets.splice(i, 1);
-                    if(gameActive) {
-                        players[myRole].s++;
-                        updateDoc(doc(db, "duel", myRole), { s: players[myRole].s });
-                    }
+                    if(gameActive) updateDoc(doc(db, "duel", myRole), { s: players[myRole].s + 1 });
                 }
                 if(b.x < 0 || b.x > 400) bullets.splice(i, 1);
             });
@@ -202,4 +181,4 @@
         gameLoop();
     </script>
 </body>
-</html>                    
+</html>q        
