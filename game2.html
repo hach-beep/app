@@ -1,19 +1,24 @@
-<!DOCTYPE html>
+        <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Strike Multi-Fix</title>
+    <title>Neon Strike Rooms</title>
     <style>
         body { margin: 0; background: #0a0a0a; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; text-align: center; }
         canvas { background: #000; border-bottom: 2px solid #0ff; width: 100%; height: 45vh; display: block; }
+        
         #setup, #win-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         #win-screen { display: none; background: rgba(0,0,0,0.9); }
-        input { padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid #0ff; background: #222; color: #fff; margin-bottom: 15px; width: 70%; }
-        button.primary-btn { padding: 15px 50px; font-size: 1.5rem; background: #0ff; border: none; border-radius: 8px; font-weight: bold; color: #000; box-shadow: 0 0 15px #0ff; }
+        
+        .input-box { background: #1a1a1a; padding: 20px; border-radius: 15px; border: 1px solid #333; width: 80%; }
+        input { padding: 12px; font-size: 1.1rem; border-radius: 8px; border: 2px solid #0ff; background: #000; color: #fff; margin-bottom: 10px; width: 90%; }
+        button.primary-btn { padding: 15px 40px; font-size: 1.3rem; background: #0ff; border: none; border-radius: 8px; font-weight: bold; color: #000; box-shadow: 0 0 15px #0ff; margin-top: 10px; }
+        
         #game-ui { height: 15vh; background: #111; display: flex; flex-direction: column; justify-content: center; }
-        .score-row { display: flex; justify-content: space-around; font-size: 1.3rem; font-weight: bold; }
-        #status-msg { color: #ff00ff; font-size: 0.9rem; margin-top: 5px; }
+        .score-row { display: flex; justify-content: space-around; font-size: 1.2rem; font-weight: bold; }
+        #room-display { color: #888; font-size: 0.8rem; margin-top: 5px; }
+
         .controls { display: flex; justify-content: space-around; align-items: center; height: 40vh; }
         .d-pad { display: grid; grid-template-columns: repeat(3, 65px); grid-gap: 8px; }
         .btn { width: 65px; height: 65px; background: #222; border: 2px solid #0ff; color: #0ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
@@ -22,15 +27,20 @@
 </head>
 <body>
 
+    <!-- JOIN SCREEN -->
     <div id="setup">
         <h1 style="color:#0ff">NEON STRIKE</h1>
-        <p id="lobby-status">Checking slots...</p>
-        <input type="text" id="name-input" placeholder="Your Name" maxlength="10">
-        <button class="primary-btn" id="join-btn">JOIN BATTLE</button>
+        <div class="input-box">
+            <input type="text" id="room-input" placeholder="Room Name (e.g. 123)">
+            <input type="text" id="name-input" placeholder="Your Name">
+            <button class="primary-btn" id="join-btn">JOIN ROOM</button>
+        </div>
+        <p style="color: #666; font-size: 0.8rem; margin-top: 15px;">Tell your friend to use the same Room Name!</p>
     </div>
 
+    <!-- WIN SCREEN -->
     <div id="win-screen">
-        <h1 id="win-msg" style="font-size: 3rem;">VICTORY</h1>
+        <h1 id="win-msg" style="font-size: 3.5rem;">VICTORY</h1>
         <p id="winner-name" style="font-size: 1.5rem; color: #ff00ff;"></p>
         <button class="primary-btn" onclick="location.reload()">NEW GAME</button>
     </div>
@@ -40,7 +50,7 @@
             <div id="p1-label" style="color:#0ff">P1: 0</div>
             <div id="p2-label" style="color:#f05">P2: 0</div>
         </div>
-        <div id="status-msg">Welcome</div>
+        <div id="room-display">Room: None</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -55,7 +65,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDdv_CdkpQy_yN7_jAPOJ_6-C3obCoXVIg",
@@ -73,52 +83,46 @@
         canvas.width = 400; canvas.height = 400;
 
         let myRole = ""; 
+        let myRoom = "";
         let myName = "";
         let gameActive = false;
-        let players = { p1: {x:50, y:200, s:0, n:"P1"}, p2: {x:320, y:200, s:0, n:"P2"} };
+        let players = { p1: {x:50, y:200, s:0, n:"Waiting..."}, p2: {x:320, y:200, s:0, n:"Waiting..."} };
         let bullets = [];
 
-        // HEARTBEAT: Update every 3 seconds to show we are still here
-        async function heartbeat() {
-            if (myRole) {
-                await updateDoc(doc(db, "duel", myRole), { t: Date.now() });
-            }
-        }
-        setInterval(heartbeat, 3000);
-
         document.getElementById('join-btn').onclick = async () => {
-            myName = document.getElementById('name-input').value || "Player";
+            myRoom = document.getElementById('room-input').value.trim().toLowerCase();
+            myName = document.getElementById('name-input').value.trim() || "Player";
             
-            const p1Snap = await getDoc(doc(db, "duel", "p1"));
-            const p2Snap = await getDoc(doc(db, "duel", "p2"));
-            const now = Date.now();
+            if(!myRoom) { alert("Enter a Room Name!"); return; }
 
-            // CHECK SLOT 1: If empty OR older than 8 seconds
-            if (!p1Snap.exists() || (now - p1Snap.data().t > 8000) || p1Snap.data().s >= 5) {
+            const p1Ref = doc(db, "rooms", myRoom, "players", "p1");
+            const p1Snap = await getDoc(p1Ref);
+
+            if (!p1Snap.exists() || p1Snap.data().s >= 5) {
                 myRole = "p1";
-                await setDoc(doc(db, "duel", "p1"), { x: 50, y: 200, s: 0, n: myName, t: now });
-                document.getElementById('status-msg').innerText = "You are BLUE";
-            } 
-            // CHECK SLOT 2: If empty OR older than 8 seconds
-            else if (!p2Snap.exists() || (now - p2Snap.data().t > 8000) || p2Snap.data().s >= 5) {
-                myRole = "p2";
-                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: myName, t: now });
-                document.getElementById('status-msg').innerText = "You are RED";
+                await setDoc(p1Ref, { x: 50, y: 200, s: 0, n: myName });
+                // Clean up P2 just in case
+                await setDoc(doc(db, "rooms", myRoom, "players", "p2"), { x: 320, y: 200, s: 0, n: "Waiting..." });
             } else {
-                alert("Game is full! Try again in 10 seconds.");
-                return;
+                myRole = "p2";
+                await setDoc(doc(db, "rooms", myRoom, "players", "p2"), { x: 320, y: 200, s: 0, n: myName });
             }
 
             document.getElementById('setup').style.display = 'none';
+            document.getElementById('room-display').innerText = "Room: " + myRoom;
             gameActive = true;
+            startSync();
         };
 
-        onSnapshot(doc(db, "duel", "p1"), (s) => { if(s.exists()) { players.p1 = s.data(); updateUI(); } });
-        onSnapshot(doc(db, "duel", "p2"), (s) => { if(s.exists()) { players.p2 = s.data(); updateUI(); } });
+        function startSync() {
+            onSnapshot(doc(db, "rooms", myRoom, "players", "p1"), (s) => { if(s.exists()) { players.p1 = s.data(); updateUI(); } });
+            onSnapshot(doc(db, "rooms", myRoom, "players", "p2"), (s) => { if(s.exists()) { players.p2 = s.data(); updateUI(); } });
+        }
 
         function updateUI() {
             document.getElementById('p1-label').innerText = `${players.p1.n}: ${players.p1.s}`;
             document.getElementById('p2-label').innerText = `${players.p2.n}: ${players.p2.s}`;
+            
             if (gameActive) {
                 if (players.p1.s >= 5) endMatch(players.p1.n);
                 if (players.p2.s >= 5) endMatch(players.p2.n);
@@ -129,9 +133,10 @@
             gameActive = false;
             document.getElementById('win-screen').style.display = 'flex';
             document.getElementById('win-msg').innerText = (winner === myName) ? "VICTORY!" : "DEFEAT";
-            document.getElementById('winner-name').innerText = winner + " Wins!";
+            document.getElementById('winner-name').innerText = winner + " Wins the Match!";
         }
 
+        // CONTROLS
         let move = { x: 0, y: 0 };
         const handleBtn = (id, x, y) => {
             const el = document.getElementById(id);
@@ -150,21 +155,27 @@
             if (gameActive && (move.x !== 0 || move.y !== 0)) {
                 players[myRole].x = Math.max(0, Math.min(375, players[myRole].x + move.x));
                 players[myRole].y = Math.max(0, Math.min(375, players[myRole].y + move.y));
-                updateDoc(doc(db, "duel", myRole), { x: players[myRole].x, y: players[myRole].y });
+                updateDoc(doc(db, "rooms", myRoom, "players", myRole), { x: players[myRole].x, y: players[myRole].y });
             }
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Blue Player
             ctx.fillStyle = "#0ff"; ctx.fillRect(players.p1.x, players.p1.y, 25, 25);
+            // Draw Red Player
             ctx.fillStyle = "#f05"; ctx.fillRect(players.p2.x, players.p2.y, 25, 25);
+
             bullets.forEach((b, i) => {
                 b.x += b.v;
                 ctx.fillStyle = "#fff"; ctx.fillRect(b.x, b.y, 12, 4);
                 let enemy = myRole === "p1" ? "p2" : "p1";
                 if (Math.hypot(b.x - players[enemy].x, b.y - players[enemy].y) < 25) {
                     bullets.splice(i, 1);
-                    if(gameActive) updateDoc(doc(db, "duel", myRole), { s: players[myRole].s + 1 });
+                    if(gameActive) updateDoc(doc(db, "rooms", myRoom, "players", myRole), { s: players[myRole].s + 1 });
                 }
                 if(b.x < 0 || b.x > 400) bullets.splice(i, 1);
             });
+
             requestAnimationFrame(gameLoop);
         }
         gameLoop();
