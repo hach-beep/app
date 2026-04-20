@@ -3,21 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Strike Fixed</title>
+    <title>Neon Strike Multi-Fix</title>
     <style>
         body { margin: 0; background: #0a0a0a; color: #fff; font-family: sans-serif; overflow: hidden; touch-action: none; text-align: center; }
         canvas { background: #000; border-bottom: 2px solid #0ff; width: 100%; height: 45vh; display: block; }
-        
         #setup, #win-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
         #win-screen { display: none; background: rgba(0,0,0,0.9); }
-        
         input { padding: 15px; font-size: 1.2rem; border-radius: 8px; border: 2px solid #0ff; background: #222; color: #fff; margin-bottom: 15px; width: 70%; }
         button.primary-btn { padding: 15px 50px; font-size: 1.5rem; background: #0ff; border: none; border-radius: 8px; font-weight: bold; color: #000; box-shadow: 0 0 15px #0ff; }
-        
         #game-ui { height: 15vh; background: #111; display: flex; flex-direction: column; justify-content: center; }
         .score-row { display: flex; justify-content: space-around; font-size: 1.3rem; font-weight: bold; }
         #status-msg { color: #ff00ff; font-size: 0.9rem; margin-top: 5px; }
-
         .controls { display: flex; justify-content: space-around; align-items: center; height: 40vh; }
         .d-pad { display: grid; grid-template-columns: repeat(3, 65px); grid-gap: 8px; }
         .btn { width: 65px; height: 65px; background: #222; border: 2px solid #0ff; color: #0ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; }
@@ -26,19 +22,17 @@
 </head>
 <body>
 
-    <!-- JOIN SCREEN -->
     <div id="setup">
-        <h1 style="color:#0ff; font-size: 2.5rem; text-shadow: 0 0 10px #0ff;">NEON STRIKE</h1>
-        <p>Enter name to start fresh match:</p>
+        <h1 style="color:#0ff">NEON STRIKE</h1>
+        <p id="lobby-status">Checking slots...</p>
         <input type="text" id="name-input" placeholder="Your Name" maxlength="10">
-        <button class="primary-btn" id="join-btn">PLAY NOW</button>
+        <button class="primary-btn" id="join-btn">JOIN BATTLE</button>
     </div>
 
-    <!-- WIN SCREEN -->
     <div id="win-screen">
-        <h1 id="win-msg" style="font-size: 4rem; text-shadow: 0 0 20px #0ff;">VICTORY</h1>
+        <h1 id="win-msg" style="font-size: 3rem;">VICTORY</h1>
         <p id="winner-name" style="font-size: 1.5rem; color: #ff00ff;"></p>
-        <button class="primary-btn" onclick="location.reload()">PLAY AGAIN</button>
+        <button class="primary-btn" onclick="location.reload()">NEW GAME</button>
     </div>
 
     <div id="game-ui">
@@ -46,7 +40,7 @@
             <div id="p1-label" style="color:#0ff">P1: 0</div>
             <div id="p2-label" style="color:#f05">P2: 0</div>
         </div>
-        <div id="status-msg">Welcome!</div>
+        <div id="status-msg">Welcome</div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -61,7 +55,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDdv_CdkpQy_yN7_jAPOJ_6-C3obCoXVIg",
@@ -69,8 +63,7 @@
             projectId: "game-3f597",
             storageBucket: "game-3f597.firebasestorage.app",
             messagingSenderId: "151158588836",
-            appId: "1:151158588836:web:6e242416de05fb0b1ced31",
-            measurementId: "G-FWX8ZBTDS6"
+            appId: "1:151158588836:web:6e242416de05fb0b1ced31"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -85,37 +78,47 @@
         let players = { p1: {x:50, y:200, s:0, n:"P1"}, p2: {x:320, y:200, s:0, n:"P2"} };
         let bullets = [];
 
-        // 1. CLICK PLAY - This resets the database for you
+        // HEARTBEAT: Update every 3 seconds to show we are still here
+        async function heartbeat() {
+            if (myRole) {
+                await updateDoc(doc(db, "duel", myRole), { t: Date.now() });
+            }
+        }
+        setInterval(heartbeat, 3000);
+
         document.getElementById('join-btn').onclick = async () => {
             myName = document.getElementById('name-input').value || "Player";
             
             const p1Snap = await getDoc(doc(db, "duel", "p1"));
             const p2Snap = await getDoc(doc(db, "duel", "p2"));
+            const now = Date.now();
 
-            // If P1 doesn't exist OR P1 has a finished game (score >= 5), we reset P1
-            if (!p1Snap.exists() || p1Snap.data().s >= 5) {
+            // CHECK SLOT 1: If empty OR older than 8 seconds
+            if (!p1Snap.exists() || (now - p1Snap.data().t > 8000) || p1Snap.data().s >= 5) {
                 myRole = "p1";
-                await setDoc(doc(db, "duel", "p1"), { x: 50, y: 200, s: 0, n: myName });
-                // Also reset P2 if they had a high score
-                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: "Waiting..." });
-            } else {
+                await setDoc(doc(db, "duel", "p1"), { x: 50, y: 200, s: 0, n: myName, t: now });
+                document.getElementById('status-msg').innerText = "You are BLUE";
+            } 
+            // CHECK SLOT 2: If empty OR older than 8 seconds
+            else if (!p2Snap.exists() || (now - p2Snap.data().t > 8000) || p2Snap.data().s >= 5) {
                 myRole = "p2";
-                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: myName });
+                await setDoc(doc(db, "duel", "p2"), { x: 320, y: 200, s: 0, n: myName, t: now });
+                document.getElementById('status-msg').innerText = "You are RED";
+            } else {
+                alert("Game is full! Try again in 10 seconds.");
+                return;
             }
 
             document.getElementById('setup').style.display = 'none';
             gameActive = true;
         };
 
-        // 2. LISTEN FOR DATA
         onSnapshot(doc(db, "duel", "p1"), (s) => { if(s.exists()) { players.p1 = s.data(); updateUI(); } });
         onSnapshot(doc(db, "duel", "p2"), (s) => { if(s.exists()) { players.p2 = s.data(); updateUI(); } });
 
         function updateUI() {
             document.getElementById('p1-label').innerText = `${players.p1.n}: ${players.p1.s}`;
             document.getElementById('p2-label').innerText = `${players.p2.n}: ${players.p2.s}`;
-            
-            // Only show Win Screen if WE are actually playing
             if (gameActive) {
                 if (players.p1.s >= 5) endMatch(players.p1.n);
                 if (players.p2.s >= 5) endMatch(players.p2.n);
@@ -126,22 +129,21 @@
             gameActive = false;
             document.getElementById('win-screen').style.display = 'flex';
             document.getElementById('win-msg').innerText = (winner === myName) ? "VICTORY!" : "DEFEAT";
-            document.getElementById('winner-name').innerText = winner + " is the Champion!";
+            document.getElementById('winner-name').innerText = winner + " Wins!";
         }
 
-        // 3. CONTROLS
         let move = { x: 0, y: 0 };
         const handleBtn = (id, x, y) => {
             const el = document.getElementById(id);
             el.ontouchstart = (e) => { e.preventDefault(); move.x = x; move.y = y; };
             el.ontouchend = () => { move.x = 0; move.y = 0; };
         };
-        handleBtn('up', 0, -6); handleBtn('down', 0, 6);
-        handleBtn('left', -6, 0); handleBtn('right', 6, 0);
+        handleBtn('up', 0, -7); handleBtn('down', 0, 7);
+        handleBtn('left', -7, 0); handleBtn('right', 7, 0);
 
         document.getElementById('fire').onclick = () => {
             if(!gameActive) return;
-            bullets.push({ x: players[myRole].x + 12, y: players[myRole].y + 10, v: myRole === "p1" ? 12 : -12 });
+            bullets.push({ x: players[myRole].x + 12, y: players[myRole].y + 10, v: myRole === "p1" ? 14 : -14 });
         };
 
         function gameLoop() {
@@ -150,35 +152,22 @@
                 players[myRole].y = Math.max(0, Math.min(375, players[myRole].y + move.y));
                 updateDoc(doc(db, "duel", myRole), { x: players[myRole].x, y: players[myRole].y });
             }
-
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.shadowBlur = 15;
-            
-            // Draw P1 (Blue)
-            ctx.fillStyle = "#0ff"; ctx.shadowColor = "#0ff";
-            ctx.fillRect(players.p1.x, players.p1.y, 25, 25);
-            
-            // Draw P2 (Red)
-            ctx.fillStyle = "#f05"; ctx.shadowColor = "#f05";
-            ctx.fillRect(players.p2.x, players.p2.y, 25, 25);
-
-            // Bullets logic
+            ctx.fillStyle = "#0ff"; ctx.fillRect(players.p1.x, players.p1.y, 25, 25);
+            ctx.fillStyle = "#f05"; ctx.fillRect(players.p2.x, players.p2.y, 25, 25);
             bullets.forEach((b, i) => {
                 b.x += b.v;
-                ctx.fillStyle = "#fff"; ctx.shadowColor = "#fff"; ctx.fillRect(b.x, b.y, 12, 4);
-                
+                ctx.fillStyle = "#fff"; ctx.fillRect(b.x, b.y, 12, 4);
                 let enemy = myRole === "p1" ? "p2" : "p1";
-                let dist = Math.hypot(b.x - players[enemy].x, b.y - players[enemy].y);
-                if (dist < 25) {
+                if (Math.hypot(b.x - players[enemy].x, b.y - players[enemy].y) < 25) {
                     bullets.splice(i, 1);
                     if(gameActive) updateDoc(doc(db, "duel", myRole), { s: players[myRole].s + 1 });
                 }
                 if(b.x < 0 || b.x > 400) bullets.splice(i, 1);
             });
-
             requestAnimationFrame(gameLoop);
         }
         gameLoop();
     </script>
 </body>
-</html>q        
+</html>
